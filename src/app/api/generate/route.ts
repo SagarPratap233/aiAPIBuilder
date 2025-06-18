@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { generateAPI, generateCode } from '../../../lib/db/ai'
+import deploymentService from '../../../lib/deployment'
 
 export async function POST(req: NextRequest) {
   try {
-    const { prompt, name } = await req.json()
+    const { prompt, name, autoDeploy = false } = await req.json()
 
     if (!prompt || !name) {
       return NextResponse.json(
@@ -12,7 +13,7 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    console.log('Generating API for:', prompt)
+    console.log('Generating API for:', prompt, 'autoDeploy:', autoDeploy)
 
     // Generate API specification
     const specification = await generateAPI(prompt)
@@ -22,14 +23,65 @@ export async function POST(req: NextRequest) {
     const code = await generateCode(specification)
     console.log('Generated code length:', code.length)
 
-    // For MVP, return without saving to database
-    // You can add database saving later when you implement proper user authentication
-    return NextResponse.json({
-      id: `api-${Date.now()}`, // Simple ID for now
+    // Create API ID
+    const apiId = `api-${Date.now()}`
+
+    let deploymentResult = null
+
+    // Auto-deploy if requested
+    if (autoDeploy) {
+      console.log(`Starting auto-deployment for API: ${apiId}`)
+
+      try {
+        deploymentResult = await deploymentService.deployToVercel({
+          apiId,
+          code,
+          name: name
+            .toLowerCase()
+            .replace(/[^a-z0-9\s-]/g, '')
+            .replace(/\s+/g, '-'),
+          description: prompt,
+        })
+
+        console.log(
+          `Deployment ${
+            deploymentResult.success ? 'successful' : 'failed'
+          } for API: ${apiId}`
+        )
+      } catch (deployError) {
+        console.error('Deployment error:', deployError)
+
+        deploymentResult = {
+          success: false,
+          error:
+            deployError instanceof Error
+              ? deployError.message
+              : 'Deployment failed',
+        }
+      }
+    }
+
+    const response = {
+      id: apiId,
       specification,
       code,
-      message: 'API generated successfully! Copy the code below.',
-    })
+      message: autoDeploy
+        ? deploymentResult?.success
+          ? 'API generated and deployed successfully!'
+          : 'API generated successfully but deployment failed.'
+        : 'API generated successfully! Copy the code below.',
+      deployment: deploymentResult,
+      // Add deployment info to response
+      deployUrl: deploymentResult?.url,
+      deploymentId: deploymentResult?.deploymentId,
+      status: autoDeploy
+        ? deploymentResult?.success
+          ? 'deployed'
+          : 'failed'
+        : 'generated',
+    }
+
+    return NextResponse.json(response)
   } catch (error) {
     console.error('Generation error:', error)
     return NextResponse.json(

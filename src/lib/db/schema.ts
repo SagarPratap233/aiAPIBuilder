@@ -6,6 +6,7 @@ import {
   jsonb,
   integer,
   timestamp,
+  boolean,
 } from 'drizzle-orm/pg-core'
 
 export const users = pgTable('users', {
@@ -32,6 +33,13 @@ export const generatedApis = pgTable('generated_apis', {
   deploymentUrl: varchar('deployment_url', { length: 500 }),
   repositoryUrl: varchar('repository_url', { length: 500 }),
   status: varchar('status', { length: 50 }).default('draft'),
+
+  // New auto-deployment fields
+  autoDeployed: boolean('auto_deployed').default(false),
+  deploymentId: varchar('deployment_id', { length: 255 }),
+  deploymentError: text('deployment_error'),
+  updatedAt: timestamp('updated_at').defaultNow(),
+
   createdAt: timestamp('created_at').defaultNow(),
 })
 
